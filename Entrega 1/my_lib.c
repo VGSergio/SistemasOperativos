@@ -97,3 +97,35 @@ char *my_strchr(const char *str, int c){
     else
         return NULL;
 }
+
+
+
+void *my_stack_pop (struct my_stack *stack){
+	
+	struct my_stack_node* aux;
+
+	if (stack -> top != NULL){
+		aux=stack -> top;
+		stack -> top= aux -> next;
+		aux->next= NULL;
+	}
+	return aux;
+}
+
+
+int my_stack_len(struct my_stack *stack){
+
+	size_t len = 0;
+    int i = 0;
+	
+	struct my_stack_node* node;
+    node = stack -> top;
+	
+	if (node != NULL){
+		while (node) {
+			len++;
+			node=node -> next;
+		}  
+	}
+	return len;
+}
