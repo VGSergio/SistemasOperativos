@@ -109,6 +109,11 @@ char *my_strchr(const char *str, int c)
         return NULL;
 }
 
+/**
+ * my_stack_init allocates memory for a stack my_stack.
+ * Contains the pointer to top of the stack and the size of the data(size).
+ * Returns the pointer to the stack.
+ **/
 struct my_stack *my_stack_init(int size)
 {
     struct my_stack *stack;
@@ -122,6 +127,10 @@ struct my_stack *my_stack_init(int size)
     return stack;
 }
 
+/**
+ * my_stack_push pushes a new element to the top of the stack.
+ * Returns 0 if the operation was successful, -1 otherwise.
+ **/
 int my_stack_push(struct my_stack *stack, void *data)
 {
     if (stack == NULL || stack->size <= 0)
@@ -139,7 +148,10 @@ int my_stack_push(struct my_stack *stack, void *data)
     return EXIT_SUCCESS;
 }
 
-
+/**
+ * my_stack_pop pops the top element of the stack.
+ * Returns the data of the popped element.
+ **/
 void *my_stack_pop(struct my_stack *stack)
 {
 
@@ -157,6 +169,9 @@ void *my_stack_pop(struct my_stack *stack)
     return aux->data;
 }
 
+/**
+ * my_stack_len returns the number of elements in the stack.
+ **/
 int my_stack_len(struct my_stack *stack)
 {
 
@@ -175,6 +190,8 @@ int my_stack_len(struct my_stack *stack)
     }
     return len;
 }
+
+
 int borrado(struct my_stack_node *elemento, int data_size)
 {
 
@@ -196,6 +213,9 @@ int borrado(struct my_stack_node *elemento, int data_size)
     }
 }
 
+/**
+ * my_stack_purge frees the memory of the stack.
+ **/
 int my_stack_purge(struct my_stack *stack)
 {
     int bytes = 0;
@@ -211,9 +231,10 @@ int my_stack_purge(struct my_stack *stack)
     return bytes;
 }
 
+
 int escritura_fichero(struct my_stack_node *elemento, int fd, size_t size)
 {
-    ssize_t longitud;
+    size_t longitud;
 
     if (elemento->next == NULL)
     {
@@ -232,7 +253,6 @@ int escritura_fichero(struct my_stack_node *elemento, int fd, size_t size)
     }
     else
     {
-
         int elementos = escritura_fichero(elemento->next, fd, size) + 1;
         //Escribir.
         longitud = write(fd, elemento->data, size);
@@ -240,6 +260,9 @@ int escritura_fichero(struct my_stack_node *elemento, int fd, size_t size)
     }
 }
 
+/**
+ * my_stack_write saves the stack in a file.
+ **/
 int my_stack_write(struct my_stack *stack, char *filename)
 {
     if (stack == NULL || stack->top == NULL)
@@ -261,6 +284,9 @@ int my_stack_write(struct my_stack *stack, char *filename)
     return elementos;
 }
 
+/**
+ * my_stack_read reads a stack from a file.
+ **/
 struct my_stack *my_stack_read(char *filename)
 {
 
