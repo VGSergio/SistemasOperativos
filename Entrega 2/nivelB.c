@@ -5,13 +5,13 @@
  * Planells Torres, David
  **/
 
-/*
-nivelA.c - Adelaida Delgado (adaptación de nivel3.c)
-Cada nivel incluye la funcionalidad de la anterior.
-nivel A: Muestra el prompt, captura la línea de comandos, 
-la trocea en tokens y chequea si se trata de comandos internos 
-(cd, export, source, jobs, fg, bg o exit). Si son externos los ejecuta con execvp()
-*/
+/**
+ * nivelA.c - Adelaida Delgado (adaptación de nivel3.c)
+ * Cada nivel incluye la funcionalidad de la anterior.
+ * nivel A: Muestra el prompt, captura la línea de comandos, 
+ * la trocea en tokens y chequea si se trata de comandos internos 
+ * (cd, export, source, jobs, fg, bg o exit). Si son externos los ejecuta con execvp()
+ **/
 
 #define _POSIX_C_SOURCE 200112L
 
@@ -82,7 +82,7 @@ int check_internal(char **args) {
     if (!strcmp(args[0], "source"))
         return internal_source(args);
     if (!strcmp(args[0], "jobs"))
-        return internal_jobs();
+        return internal_jobs(args);
     if (!strcmp(args[0], "bg"))
         return internal_bg(args);
     if (!strcmp(args[0], "fg"))
@@ -196,10 +196,35 @@ int execute_line(char *line) {
     if (parse_args(args, line) > 0) {
         if (check_internal(args)) {
             return 1;
+        } else {
+            pid = fork();
+            if (pid==0){ //Hijo
+                #if DEBUGN3
+                    fprintf(stderr, GRIS "[execute_line()→ PID hijo: %d (%s)]\n" RESET_FORMATO, getpid(), command_line);
+                #endif
+                
+                if(execvp(args[0], args)<0){
+                    fprintf(stderr, RESET_FORMATO "%s: no se encontró la orden\n", command_line);
+                    exit(-1);
+                }
+            } else {//Padre
+                #if DEBUGN3
+                    fprintf(stderr, GRIS "[execute_line()→ PID padre: %d (%s)]\n" RESET_FORMATO, getpid(), mi_shell);
+                #endif
+
+                jobs_list[0].pid = pid;
+                jobs_list[0].status = 'E';
+                strcpy(jobs_list[0].cmd, command_line);
+                waitpid(-1, &status, 0);
+                if(status==0){
+                    fprintf(stderr, GRIS "[execute_line()→ Proceso hijo %d finalizado con señal: %d]\n" RESET_FORMATO, pid, status);
+                } else {
+                    fprintf(stderr, GRIS "[execute_line()→ Proceso hijo %d finalizado con señal: %d]\n" RESET_FORMATO, pid, 1);
+                }
+                jobs_list[0].pid = 0;
+            }
         }
-        #if DEBUGN3
-            fprintf(stderr, GRIS "[execute_line()→ PID padre: %d]\n" RESET_FORMATO, getpid());
-        #endif
+        
     }
     return 0;
 }
@@ -222,9 +247,3 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 }
-
-
-
-
-
-
