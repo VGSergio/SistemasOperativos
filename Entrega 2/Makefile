@@ -3,7 +3,7 @@ CC=gcc
 CFLAGS=-c -g -Wall -std=c99
 #LDFLAGS=-lreadline -Incurses #activar si se usa readline
  
-SOURCES=nivelA.c nivelB.c 
+SOURCES=nivelA.c nivelB.c
 LIBRARIES= #.o
 INCLUDES= #.h
 PROGRAMS=nivelA nivelB
@@ -19,7 +19,7 @@ nivelA: nivelA.o
 
 nivelB: nivelB.o
 	$(CC) $@.o -o $@ $(LIBRARIES)
-
+ 
 %.o: %.c $(INCLUDES)
 	$(CC) $(CFLAGS) -o $@ -c $<
  

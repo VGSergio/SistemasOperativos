@@ -15,7 +15,7 @@
 
 #define _POSIX_C_SOURCE 200112L
 
-#define DEBUGN1 1 //parse_args()
+#define DEBUGN1 0 //parse_args()
 #define DEBUGN3 1 //execute_line()
 
 #define PROMPT_PERSONAL 1 // si no vale 1 el prompt será solo el carácter de PROMPT
@@ -61,6 +61,9 @@ int internal_fg(char **args);
 char *read_line(char *line);
 int parse_args(char **args, char *line);
 int execute_line(char *line);
+
+void reaper(int signum);
+void ctrlc(int signum);
 
 static char mi_shell[COMMAND_LINE_SIZE]; //variable global para guardar el nombre del minishell
 
@@ -186,7 +189,7 @@ int parse_args(char **args, char *line) {
 
 int execute_line(char *line) {
     char *args[ARGS_SIZE];
-    pid_t pid, status;
+    pid_t pid;
     char command_line[COMMAND_LINE_SIZE];
 
     //copiamos la línea de comandos sin '\n' para guardarlo en el array de structs de los procesos
@@ -199,6 +202,8 @@ int execute_line(char *line) {
         } else {
             pid = fork();
             if (pid==0){ //Hijo
+                signal(SIGCHLD, SIG_DFL);
+                signal(SIGINT, SIG_IGN);
                 #if DEBUGN3
                     fprintf(stderr, GRIS "[execute_line()→ PID hijo: %d (%s)]\n" RESET_FORMATO, getpid(), command_line);
                 #endif
@@ -208,6 +213,7 @@ int execute_line(char *line) {
                     exit(-1);
                 }
             } else {//Padre
+                signal(SIGINT, ctrlc);
                 #if DEBUGN3
                     fprintf(stderr, GRIS "[execute_line()→ PID padre: %d (%s)]\n" RESET_FORMATO, getpid(), mi_shell);
                 #endif
@@ -215,13 +221,9 @@ int execute_line(char *line) {
                 jobs_list[0].pid = pid;
                 jobs_list[0].status = 'E';
                 strcpy(jobs_list[0].cmd, command_line);
-                waitpid(-1, &status, 0);
-                if(status==0){
-                    fprintf(stderr, GRIS "[execute_line()→ Proceso hijo %d finalizado con señal: %d]\n" RESET_FORMATO, pid, status);
-                } else {
-                    fprintf(stderr, GRIS "[execute_line()→ Proceso hijo %d finalizado con señal: %d]\n" RESET_FORMATO, pid, 1);
+                while(jobs_list[0].pid>0){
+                    pause();
                 }
-                jobs_list[0].pid = 0;
             }
         }
         
@@ -229,9 +231,63 @@ int execute_line(char *line) {
     return 0;
 }
 
+void reaper(int signum){
+    signal(SIGCHLD, reaper);
+
+    int ended;
+    int status;
+    while ((ended=waitpid(-1, &status, WNOHANG)) > 0) {
+        if(jobs_list[0].pid == ended){
+            char mensaje[2*1024];
+            if(WIFSIGNALED(status)){
+                sprintf(mensaje, GRIS "\n[reaper())→ Proceso hijo %d (%s) finalizado por señal %d]\n" RESET_FORMATO, ended, jobs_list[0].cmd, WTERMSIG(status));
+            } else if(WIFEXITED(status)){
+                sprintf(mensaje, GRIS "[reaper())→ Proceso hijo %d (%s) finalizado con exit code %d]\n" RESET_FORMATO, ended, jobs_list[0].cmd, WEXITSTATUS(status));
+            }
+            write(2, mensaje, strlen(mensaje));
+            jobs_list[0].pid = 0;
+            jobs_list[0].status = 'F';
+            memset(jobs_list[0].cmd, '\0', sizeof(jobs_list[0].cmd));
+        }
+    }
+    
+}
+
+void ctrlc(int signum){
+    signal(SIGINT, ctrlc);
+    
+    char mensaje[3*1024];
+    sprintf(mensaje, GRIS "\n[ctrlc()→ Soy el proceso con PID %d (%s), el proceso en foreground es %d (%s)]" RESET_FORMATO,
+            getpid(), mi_shell, jobs_list[0].pid, jobs_list[0].cmd);
+    write(2, mensaje, strlen(mensaje));
+
+    if(jobs_list[0].pid > 0){
+        if(strcmp(jobs_list[0].cmd, mi_shell) != 0){
+            kill(jobs_list[0].pid, SIGTERM);
+            sprintf(mensaje, GRIS "\n[ctrlc()→ Señal %d enviada a %d (%s) por %d (%s)]" RESET_FORMATO,
+            SIGTERM, jobs_list[0].pid, jobs_list[0].cmd, getpid(), mi_shell);
+            write(2, mensaje, strlen(mensaje));
+        } else {
+            sprintf(mensaje, GRIS "\n[ctrlc()→ Señal %d no enviada por %d (%s) debido a que su proceso en foreground es el shell]" RESET_FORMATO,
+            SIGTERM, getpid(), mi_shell);
+            write(2, mensaje, strlen(mensaje));
+        }
+    } else {
+        sprintf(mensaje, GRIS "\n[ctrlc()→ Señal %d no enviada por %d (%s) debiado a que no hay proceso en foreground]\n" RESET_FORMATO,
+            SIGTERM, getpid(), mi_shell);
+        write(2, mensaje, strlen(mensaje));
+    }
+    
+    fflush(stdout);
+}
+
 int main(int argc, char *argv[]) {
     char line[COMMAND_LINE_SIZE];
     memset(line, 0, COMMAND_LINE_SIZE);
+
+	signal(SIGCHLD,reaper);
+    signal(SIGINT,ctrlc);
+
     while (1) {
         if (read_line(line)) { // !=NULL
             //Copiamos el nombre del programa que actua como minishell en mi_shell.
