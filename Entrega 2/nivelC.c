@@ -5,14 +5,6 @@
  * Planells Torres, David
  **/
 
-/**
- * nivelA.c - Adelaida Delgado (adaptación de nivel3.c)
- * Cada nivel incluye la funcionalidad de la anterior.
- * nivel A: Muestra el prompt, captura la línea de comandos, 
- * la trocea en tokens y chequea si se trata de comandos internos 
- * (cd, export, source, jobs, fg, bg o exit). Si son externos los ejecuta con execvp()
- **/
-
 #define _POSIX_C_SOURCE 200112L
 
 #define DEBUGN1 0 //parse_args()
