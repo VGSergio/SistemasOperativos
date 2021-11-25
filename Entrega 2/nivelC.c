@@ -56,6 +56,10 @@ int execute_line(char *line);
 
 void reaper(int signum);
 void ctrlc(int signum);
+void ctrlz(int signum);
+char *comando;
+
+int n_pids = 0;
 
 static char mi_shell[COMMAND_LINE_SIZE]; //variable global para guardar el nombre del minishell
 
@@ -240,6 +244,17 @@ void reaper(int signum){
             jobs_list[0].pid = 0;
             jobs_list[0].status = 'F';
             memset(jobs_list[0].cmd, '\0', sizeof(jobs_list[0].cmd));
+            
+        }
+         else
+        {
+            int pos = jobs_list_find(ended);
+            if (pos > 0)
+            {
+                printf(" [%d]+\tDetenido\t%s\n",pos, jobs_list[pos].cmd);
+                jobs_list_remove(pos);
+                imprimir_prompt();
+            }
         }
     }
     
@@ -273,12 +288,74 @@ void ctrlc(int signum){
     fflush(stdout);
 }
 
+int is_background(char **args)
+{
+
+    if (strstr(*args,"&") != NULL)
+    {
+
+        strtok(*args, "&");
+
+        return 1;
+    }
+
+    return 0;
+}
+
+
+int internal_jobs()
+{
+    for (int i = 1; i <= n_pids; i++)
+    {
+        printf("[%d]\t%d\t%c\t%s", i,jobs_list[i].pid,jobs_list[i].status, jobs_list[i].cmd);
+    }
+
+    return 1;
+}
+void ctrlz(int signum)
+{
+    signal(SIGTSTP, ctrlz);
+
+    if (jobs_list[0].pid > 0)
+    {
+
+        if (strcmp(comando, jobs_list[0].cmd) != 0)
+        {
+
+            if (kill(jobs_list[0].pid, SIGSTOP) != 0)
+            {
+                perror("KILL");
+                exit(-1);
+            }
+            printf("Processo PID  [%d] detenido\n", jobs_list[0].pid);
+
+            jobs_list_add(jobs_list[0].pid, 'D', jobs_list[0].cmd);
+            jobs_list[0].pid = 0;
+            jobs_list[0].status = 'F';
+            memset(jobs_list[0].cmd, 0, COMMAND_LINE_SIZE);
+        }
+        else
+        {
+            printf("Señal SIGSTOP no enviada debido a que el proceso en foreground es el shell\n");
+        }
+    }
+    else
+    {
+        printf("Señal SIGSTOP no enviada debido a que no hay proceso en foreground\n");
+    }
+
+    
+}
+
+
 int main(int argc, char *argv[]) {
     char line[COMMAND_LINE_SIZE];
     memset(line, 0, COMMAND_LINE_SIZE);
-
+    strcpy(comando, argv[0]);
 	signal(SIGCHLD,reaper);
     signal(SIGINT,ctrlc);
+    signal(SIGTSTP, ctrlz);
+
 
     while (1) {
         if (read_line(line)) { // !=NULL
