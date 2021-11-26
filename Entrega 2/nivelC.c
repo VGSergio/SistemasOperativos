@@ -30,6 +30,7 @@
 #define N_JOBS 24 // cantidad de trabajos permitidos
 
 char const PROMPT = '$';
+int n_pids=0;
 
 #include <errno.h>  //errno
 #include <stdio.h>  //printf(), fflush(), fgets(), stdout, stdin, stderr, fprintf()
@@ -56,10 +57,12 @@ int execute_line(char *line);
 
 void reaper(int signum);
 void ctrlc(int signum);
-void ctrlz(int signum);
-char *comando;
 
-int n_pids = 0;
+int jobs_list_add(pid_t pid, char status, char *cmd);
+int jobs_list_find(pid_t pid);
+int jobs_list_remove(int pos);
+
+
 
 static char mi_shell[COMMAND_LINE_SIZE]; //variable global para guardar el nombre del minishell
 
@@ -108,7 +111,9 @@ int internal_source(char **args) {
 
 int internal_jobs(char **args) {
     #if DEBUGN1 
-        printf("[internal_jobs()→ Esta función mostrará el PID de los procesos que no estén en foreground]\n");
+        for (size_t i = 1; i <= n_pids; i++){
+        printf("Trabajo %d)    PID: %d   Comando: %s   Estatus: %s"  i, jobs_list[i].pid, jobs_list[i].cmd, jobs_list[i].status);
+    }
     #endif
     return 1;
 }
@@ -244,17 +249,6 @@ void reaper(int signum){
             jobs_list[0].pid = 0;
             jobs_list[0].status = 'F';
             memset(jobs_list[0].cmd, '\0', sizeof(jobs_list[0].cmd));
-            
-        }
-         else
-        {
-            int pos = jobs_list_find(ended);
-            if (pos > 0)
-            {
-                printf(" [%d]+\tDetenido\t%s\n",pos, jobs_list[pos].cmd);
-                jobs_list_remove(pos);
-                imprimir_prompt();
-            }
         }
     }
     
@@ -288,74 +282,48 @@ void ctrlc(int signum){
     fflush(stdout);
 }
 
-int is_background(char **args)
-{
+int jobs_list_add(pid_t pid, char status, char *cmd){
 
-    if (strstr(*args,"&") != NULL)
-    {
+    if (n_pids<N_JOBS){
+        jobs_list[n_pids].pid=pid;
+        jobs_list[n_pids].status=status;
+        strcpy(jobs_list[n_pids].cmd,cmd);
+        n_pids++;
+        return 0;
+    }
+    
+    return -1;
+}
 
-        strtok(*args, "&");
+int jobs_list_find(pid_t pid){
 
-        return 1;
+    for (int pos = 0; pos < n_pids; pos++){
+        if (jobs_list[pos].pid==pid){
+            return pos;
+        }
     }
 
+    return -1;
+}
+
+
+int  jobs_list_remove(int pos){
+
+    jobs_list[pos].pid=jobs_list[n_pids].pid;
+    jobs_list[pos].status=jobs_list[n_pids].status;
+    strcpy(jobs_list[pos].cmd,jobs_list[n_pids].cmd);
+    n_pids--;
     return 0;
 }
 
-
-int internal_jobs()
-{
-    for (int i = 1; i <= n_pids; i++)
-    {
-        printf("[%d]\t%d\t%c\t%s", i,jobs_list[i].pid,jobs_list[i].status, jobs_list[i].cmd);
-    }
-
-    return 1;
-}
-void ctrlz(int signum)
-{
-    signal(SIGTSTP, ctrlz);
-
-    if (jobs_list[0].pid > 0)
-    {
-
-        if (strcmp(comando, jobs_list[0].cmd) != 0)
-        {
-
-            if (kill(jobs_list[0].pid, SIGSTOP) != 0)
-            {
-                perror("KILL");
-                exit(-1);
-            }
-            printf("Processo PID  [%d] detenido\n", jobs_list[0].pid);
-
-            jobs_list_add(jobs_list[0].pid, 'D', jobs_list[0].cmd);
-            jobs_list[0].pid = 0;
-            jobs_list[0].status = 'F';
-            memset(jobs_list[0].cmd, 0, COMMAND_LINE_SIZE);
-        }
-        else
-        {
-            printf("Señal SIGSTOP no enviada debido a que el proceso en foreground es el shell\n");
-        }
-    }
-    else
-    {
-        printf("Señal SIGSTOP no enviada debido a que no hay proceso en foreground\n");
-    }
-
-    
-}
 
 
 int main(int argc, char *argv[]) {
     char line[COMMAND_LINE_SIZE];
     memset(line, 0, COMMAND_LINE_SIZE);
-    strcpy(comando, argv[0]);
+
 	signal(SIGCHLD,reaper);
     signal(SIGINT,ctrlc);
-    signal(SIGTSTP, ctrlz);
-
 
     while (1) {
         if (read_line(line)) { // !=NULL
