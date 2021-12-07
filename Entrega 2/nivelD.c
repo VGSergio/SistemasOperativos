@@ -118,16 +118,63 @@ int internal_jobs(char **args) {
 }
 
 int internal_fg(char **args) {
-    #if DEBUGN1 
-        printf("[internal_fg()→ Esta función enviará un trabajo detenido al foreground reactivando su ejecución, o uno del background al foreground ]\n");
-    #endif
+    if(args[1]){
+        int pos = atoi(args[1]); 
+        if((pos>n_pids)||(pos==0)){
+            fprintf(stderr, "fg %d: No existe este trabajo\n", pos);
+            return EXIT_FAILURE;
+        }
+
+        if(jobs_list[pos].status=='D'){
+            kill(jobs_list[pos].pid, SIGCONT);
+            fprintf(stderr, GRIS "[internal_fg()→ Señal %d (SIGCONT) enviada a %d (%s)]\n" RESET_FORMATO,
+                SIGCONT, jobs_list[pos].pid, jobs_list[pos].cmd);
+        }
+
+        jobs_list[0].pid = jobs_list[pos].pid;
+        jobs_list[pos].status = 'E';
+        jobs_list[0].status = jobs_list[pos].status;
+        strtok(jobs_list[pos].cmd, "&"); // quitamos el & 
+        strcpy(jobs_list[0].cmd, jobs_list[pos].cmd);
+
+        jobs_list_remove(pos);
+
+        fprintf(stderr, "%s\n", jobs_list[0].cmd);
+
+        while(jobs_list[0].pid>0){
+            pause();
+        }
+    } else {
+        fprintf(stderr, "\nNo se ha especificado el índice\n");
+    }
     return 1;
 }
 
 int internal_bg(char **args) {
-    #if DEBUGN1 
-        printf("[internal_bg()→ Esta función reactivará un proceso detenido para que siga ejecutándose pero en segundo plano]\n");
-    #endif
+    if(args[1]){
+        int pos = atoi(args[1]); 
+        if((pos>n_pids)||(pos==0)){
+            fprintf(stderr, "bg %d: No existe este trabajo\n", pos);
+            return EXIT_FAILURE;
+        }
+
+        if(jobs_list[pos].status=='E'){
+            fprintf(stderr, GRIS "bg %d: el trabajo ya está en segundo plano\n" RESET_FORMATO, pos);
+            return EXIT_FAILURE;
+        }
+
+        jobs_list[pos].status = 'E';
+        strcat(jobs_list[pos].cmd, " &"); // añadimos el & 
+
+        kill(jobs_list[pos].pid, SIGCONT);
+        fprintf(stderr, GRIS "[internal_bg()→ Señal %d (SIGCONT) enviada a %d (%s)]\n" RESET_FORMATO,
+                SIGCONT, jobs_list[pos].pid, jobs_list[pos].cmd);
+
+        fprintf(stderr, "[%d] %d\t%c\t%s\n", pos,jobs_list[pos].pid,jobs_list[pos].status, jobs_list[pos].cmd);
+
+    } else {
+        fprintf(stderr, "\nNo se ha especificado el índice\n");
+    }
     return 1;
 }
 
@@ -287,7 +334,7 @@ void ctrlc(int signum){
     if(jobs_list[0].pid > 0){
         if(strcmp(jobs_list[0].cmd, mi_shell) != 0){
             kill(jobs_list[0].pid, SIGTERM);
-            sprintf(mensaje, GRIS "\n[ctrlc()→ Señal %d enviada a %d (%s) por %d (%s)]" RESET_FORMATO,
+            sprintf(mensaje, GRIS "\n[ctrlc()→ Señal %d (SIGTERM) enviada a %d (%s) por %d (%s)]" RESET_FORMATO,
             SIGTERM, jobs_list[0].pid, jobs_list[0].cmd, getpid(), mi_shell);
             write(2, mensaje, strlen(mensaje));
         } else {
