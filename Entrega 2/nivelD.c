@@ -62,6 +62,7 @@ int is_background(char **args);
 int jobs_list_add(pid_t pid, char status, char *cmd);
 int jobs_list_find(pid_t pid);
 int jobs_list_remove(int pos);
+int is_output_redirection(char **args);
 int n_pids;
 
 static char mi_shell[COMMAND_LINE_SIZE]; //variable global para guardar el nombre del minishell
@@ -256,6 +257,7 @@ int execute_line(char *line) {
                 signal(SIGCHLD, SIG_DFL);
                 signal(SIGINT, SIG_IGN);
                 signal(SIGTSTP, SIG_IGN);
+                is_output_redirection(args);
                 
                 if(execvp(args[0], args)<0){
                     fprintf(stderr, RESET_FORMATO "%s: no se encontró la orden\n", command_line);
@@ -424,6 +426,50 @@ void ctrlz(int signum) {
     } else {
         fprintf(stderr, "\nSeñal SIGSTOP no enviada debido a que no hay proceso en foreground\n");
     }
+}
+int is_output_redirection(char **args)
+{
+
+    int i = 0;
+    while (args[i] != NULL)
+    {
+        //Comprueba que tenga el caracter especial ">".
+        if (strcmp(args[i], ">") == 0)
+        {
+            
+
+            args[i] = NULL;
+            //Comprueba que los argumentos sean correctos.
+            if (args[i + 1] == NULL || strlen(args[i + 1]) == 0 || args[i + 2] != NULL)
+            {
+                printf("Error en la sintaxis");
+                return 0;
+            }
+            //Abre el fichero
+            int file_descriptor = open(args[i + 1], O_CREAT | O_WRONLY, S_IRWXU);
+            if (file_descriptor == -1)
+            {
+                perror("OPEN");
+                exit(-1);
+            }
+            //Redirije la salida de consola al fichero.
+            if (dup2(file_descriptor, 1) == -1)
+            {
+                perror("DUP2");
+                exit(-1);
+            }
+            if (close(file_descriptor) == -1)
+            {
+                perror("CLOSE");
+                exit(-1);
+            }
+            
+            return 1;
+        }
+        i++;
+    }
+    
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
