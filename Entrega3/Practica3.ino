@@ -12,14 +12,9 @@ static const BaseType_t app_cpu = 1;
 
 /*************************** Variables Globals i definicions **************************************/
 
-#define NUM_OF_PHILOSOPHERS 5                       //Nombre de filòsofs
+#define NUM_OF_PHILOSOPHERS 5  //Nombre de filòsofs
 #define MAX_NUMBER_ALLOWED (NUM_OF_PHILOSOPHERS - 1)  // Màxim nombre de filòsofs a l'habitació  (un menys que el total per evitar deadlock)
 #define ESPERA 200  //interval d'espera de vTaskDelay
-
-
-
-
-
 
 
 // You'll likely need this on vanilla FreeRTOS
@@ -30,207 +25,385 @@ static const BaseType_t app_cpu = 1;
 enum { TASK_STACK_SIZE = 2048 };  // Bytes in ESP32, words in vanilla FreeRTOS
 
 // Globals
-static SemaphoreHandle_t bin_sem;   // Wait for parameters to be read
-static SemaphoreHandle_t done_sem;  // Notifies main task when done
-static SemaphoreHandle_t chopstick[NUM_OF_PHILOSOPHERS];
-static SemaphoreHandle_t asientos;
-static SemaphoreHandle_t imprimir;
-static char buf[50];
-static bool finito = false;
-static bool solape = false;
+static SemaphoreHandle_t done_sem;  // Notifica que el programa principal ha terminado
+static SemaphoreHandle_t chopstick[NUM_OF_PHILOSOPHERS];  // Array de semàforos de los palillos
+static SemaphoreHandle_t asientos; // Semáforo contador para controlar los filósofos que están en la mesa a la vez
+static SemaphoreHandle_t imprimir; // Semáforo mutex para controolar que se produzcan solapamientos
+static char buf[50]; //Buffer para imprimir mensajes informativos sobre la ejecución
+static bool finito = false; // Variable para poder seleccionar el modo de ejecución finita
+static bool solape = false; // Variable parapoder seleccionar si se produce solapamiento en los mensajes
+static int num_philosopher = 0; // Variable global para calcular el número de filósofos
 
 //*****************************************************************************
-// Tasks
+// Tareas
 
-// The only task: eating
+// Función a ejecutar por cada tarea(filósofo)
 void eat(void *parameters) {
 
- 
+  // Variable para poder controlar las repeticiones de la ejecución
   int repeticiones = 1;
+  //Variable que almacena el número de filósofos
   int num;
-  // Copy parameter and increment semaphore count
-  num = *(int *)parameters;
+  num = num_philosopher++;
 
 
-
+  //Bucle con el algoritmo de los filósofos
   while (repeticiones) {
+    //Si se selecciona la opción finito se decrementa el número de repeticiones, rompiendo el bucle
+    if (finito == true) {
+      repeticiones--;
+    }
 
-  if(finito==true){
-    repeticiones--;
-  }
-
-    xSemaphoreGive(bin_sem);
+    //Para cada mensaje impreso,se controla con el sémaforo imprimir el acceso al serial
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if ( xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo iprimir ");
+        return ;
+      }
+
     }
     sprintf(buf, "Filósofo %i: TOC TOC", num);
     Serial.println(buf);
 
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if ( xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
+    }
+    //Por cada filósofo que quiere comer se bloquea el semáforo asientos.
+    //Con este semáforo se evita el deadlock al no permitir que todos los filósofos coman a la vez
+
+    if ( xSemaphoreTake(asientos, portMAX_DELAY) == pdFALSE )
+    {
+      Serial.println("Error al capturar el semáforo asientos ");
+      return ;
     }
 
-    xSemaphoreTake(asientos, portMAX_DELAY);
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if ( xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo iprimir ");
+        return ;
+      }
     }
     sprintf(buf, "Filósofo %i: |▄|", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if ( xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo iprimir ");
+        return ;
+      }
     }
 
-    // Take left chopstick
-    xSemaphoreTake(chopstick[num], portMAX_DELAY);
+    // Coge el palillo de la izquierda
+
+    if (xSemaphoreTake(chopstick[num], portMAX_DELAY) == pdFALSE )
+    {
+      Serial.println("Error al capturar el semáforo palillo ");
+      return ;
+    }
+
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if (xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo imprimir ");
+        return ;
+      }
     }
     sprintf(buf, "Filósofo %i: ¡o", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if (xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
     }
 
 
-    // Add some delay to force deadlock
+    // Tiempo aleatorio entre 0 y ESPERA(200ms) para pensar
     vTaskDelay(random(ESPERA));
 
-    // Take right chopstick
-    xSemaphoreTake(chopstick[(num + 1) % NUM_OF_PHILOSOPHERS], portMAX_DELAY);
+    // Coge el palillo de la derecha
+
+    if (xSemaphoreTake(chopstick[(num + 1) % NUM_OF_PHILOSOPHERS], portMAX_DELAY) == pdFALSE )
+    {
+      Serial.println("Error al capturar el semáforo palillo ");
+      return ;
+    }
+
+
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if (xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo imprimir ");
+        return ;
+      }
     }
     sprintf(buf, "Filósofo %i: ¡o¡", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if (xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
     }
     vTaskDelay(random(ESPERA));
 
-    // Do some eating
+    // Comer
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if (xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo imprimir ");
+        return ;
+      }
     }
     sprintf(buf, "Filósofo %i: /o\\ ÑAM", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if (xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
     }
 
     vTaskDelay(random(ESPERA));
 
-    // Put down right chopstick
-    xSemaphoreGive(chopstick[(num + 1) % NUM_OF_PHILOSOPHERS]);
+    //Suelta el palillo de la derecha
+
+    if ( xSemaphoreGive(chopstick[(num + 1) % NUM_OF_PHILOSOPHERS]) == pdFALSE )
+    {
+      Serial.println("Error al liberar el semáforo palillo ");
+      return ;
+    }
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if ( xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo imprimir ");
+        return ;
+      }
     }
     sprintf(buf, "Filósofo %i: ¡o_", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if (xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
     }
 
-    // Put down left chopstick
-    xSemaphoreGive(chopstick[num]);
+    //Suelta el palillo de la izquierda
+
+    if (xSemaphoreGive(chopstick[num]) == pdFALSE )
+    {
+      Serial.println("Error al liberar el semáforo palillo ");
+      return ;
+    }
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if (xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo imprimir ");
+        return ;
+      }
     }
     sprintf(buf, "Filósofo %i: _o", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if (xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
+    }
+    //El filósofo se levanta de la mesa dejando un asiento disponible
+    if (xSemaphoreGive(asientos) == pdFALSE )
+    {
+      Serial.println("Error al liberar el semáforo asientos ");
+      return ;
     }
 
-    xSemaphoreGive(asientos);
     if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+      if (xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+      {
+        Serial.println("Error al capturar el semáforo imprimir ");
+        return ;
+      }
+
+
     }
     sprintf(buf, "Filósofo %i: |_|", num);
     Serial.println(buf);
     if (!solape) {
-      xSemaphoreGive(imprimir);
+
+      if (xSemaphoreGive(imprimir) == pdFALSE )
+      {
+        Serial.println("Error al liberar el semáforo imprimir ");
+        return ;
+      }
     }
   }
-  // Notify main task and delete self
-  xSemaphoreGive(done_sem);
+  //Notifica al hilo principal que ha terminado de comer y por último elimina la tarea
+
+  if ( xSemaphoreGive(done_sem) == pdFALSE )
+  {
+    Serial.println("Error al liberar el semáforo done_sem ");
+    return ;
+  }
   vTaskDelete(NULL);
 }
 
 //*****************************************************************************
-// Main (runs as its own task with priority 1 on core 1)
+// Main
 
 void setup() {
 
-  char task_name[20];
+  //Se crea el semáforo mutex imprimir
   imprimir = xSemaphoreCreateMutex();
+  if ( imprimir == NULL )
+  {
+    Serial.println("Error al crear semáforo imprimir");
+    return ;
+  }
+  //Se crea el String para leer las respuestas a las preguntas interactivas
   String respuesta;
+  //String para imprimir el nombre del filósofo craedo
+  char task_name[20];
   // Configure Serial
   Serial.begin(115200);
 
-  // Wait a moment to start (so we don't miss Serial output)
+  // Tiempo de espera para que se inicialice el serial
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   Serial.println();
-  Serial.println("---FreeRTOS Dining Philosophers Challenge---");
+  Serial.println("---  CENA DE LOS FILÓSOFOS ---");
 
-  // Create kernel objects before starting tasks
-  bin_sem = xSemaphoreCreateBinary();
+  //Se inicializa el semáforo de las tareas
   done_sem = xSemaphoreCreateCounting(NUM_OF_PHILOSOPHERS, 0);
+  if ( done_sem == NULL )
+  {
+    Serial.println("Error al crear semáforo done_sem");
+    return ;
+  }
+  //Se inicializa el semáforo de asientos con el número de filósofos menos 1
   asientos = xSemaphoreCreateCounting(MAX_NUMBER_ALLOWED, MAX_NUMBER_ALLOWED);
-  for (int i = 0; i < NUM_OF_PHILOSOPHERS; i++) {
-    chopstick[i] = xSemaphoreCreateMutex();
+  if ( asientos == NULL )
+  {
+    Serial.println("Error al crear semáforo asientos");
+    return ;
   }
 
+
+  //Se inicializan los semáforos que controlan los palillos
+  for (int i = 0; i < NUM_OF_PHILOSOPHERS; i++) {
+
+    chopstick[i] = xSemaphoreCreateMutex();
+    if ( chopstick[i] == NULL )
+    {
+      Serial.println("Error al crear semáforo chopstick[i]");
+      return ;
+    }
+
+  }
+  //Se inicia el diálogo interactivo con el usuario
   Serial.println("Quieres que la ejecución sea finita? (S/N) ");
-  respuesta=Serial.readStringUntil('\n');
-  if(respuesta[0]=='S'||respuesta[0]=='s'){
-    finito=true;
+  //Se lee la respuesta
+  respuesta = Serial.readStringUntil('\n');
+  //Solo en caso de respuesta afirmativa se activa la ejecución finita
+  if (respuesta[0] == 'S' || respuesta[0] == 's') {
+    finito = true;
     Serial.println("Ejecución finita ");
   }
-  
+
   Serial.println("Quieres que se superpongan las líneas de mensajes? (S/N) ");
-  respuesta=Serial.readStringUntil('\n');
-  if(respuesta[0]=='S'||respuesta[0]=='s'){
-    solape=true;
+  //Se lee la respuesta
+  respuesta = Serial.readStringUntil('\n');
+  //Solo en caso de respuesta afirmativa se activa el solapamiento de mensajes
+  if (respuesta[0] == 'S' || respuesta[0] == 's') {
+    solape = true;
     Serial.println("Solapamiento activado ");
   }
 
   Serial.println("Quieres que se produzca deadlock? (S/N) ");
-  respuesta=Serial.readStringUntil('\n');
-  if(respuesta[0]=='S'||respuesta[0]=='s'){
+  //Se lee la respuesta
+  respuesta = Serial.readStringUntil('\n');
+  //Solo en caso de respuesta afirmativa se provoca deadlock
+  if (respuesta[0] == 'S' || respuesta[0] == 's') {
+    //Para ello configuramos el semáforo de asientos con el número total de los filósofos,
+    //permitiendo que todos cojan el palillo a la vez
     asientos = xSemaphoreCreateCounting(NUM_OF_PHILOSOPHERS, NUM_OF_PHILOSOPHERS);
     Serial.println("Deadlock activado ");
   }
-  
-  // Have the philosphers start eating
-  for (int i = 0; i < NUM_OF_PHILOSOPHERS; i++) {
-    if (!solape) {
-      xSemaphoreTake(imprimir, portMAX_DELAY);
+
+  //Bloqueamos los mensajes hasta haber creado todos los filósofos
+  if (!solape) {
+
+    if (xSemaphoreTake(imprimir, portMAX_DELAY) == pdFALSE )
+    {
+      Serial.println("Error al capturar el semáforo iprimir ");
+      return ;
     }
+  }
+  //Bucle de creación de filósofos
+  for (int i = 0; i < NUM_OF_PHILOSOPHERS; i++) {
+
     sprintf(task_name, "@filósofo %i", i);
     Serial.println(task_name);
-    if (!solape) {
-      xSemaphoreGive(imprimir);
-    }
+    //Se crea el filósofo
     xTaskCreatePinnedToCore(eat,
                             task_name,
                             TASK_STACK_SIZE,
-                            (void *)&i,
+                            NULL,
                             1,
                             NULL,
                             app_cpu);
-    xSemaphoreTake(bin_sem, portMAX_DELAY);
+
+  }
+  //Se desbloquean los mensajes, permitiendo que los filósofos puedan ejecutarse
+  if (!solape) {
+
+    if ( xSemaphoreGive(imprimir) == pdFALSE )
+    {
+      Serial.println("Error al liberar el semáforo iprimir ");
+      return ;
+    }
   }
 
 
-  // Wait until all the philosophers are done
+  //Se espera a que todas la tareas hayan finalizado para terminar la ejecución del main
   for (int i = 0; i < NUM_OF_PHILOSOPHERS; i++) {
-    xSemaphoreTake(done_sem, portMAX_DELAY);
+
+    if (xSemaphoreTake(done_sem, portMAX_DELAY) == pdFALSE )
+    {
+      Serial.println("Error al capturar el semáforo iprimir ");
+      return ;
+    }
   }
 
-  // Say that we made it through without deadlock
-  Serial.println("Done! No deadlock occurred!");
+  //Se imprime el mensaje de que no se ha producido deadlock
+  Serial.println("Fin! Sin bloqueo!");
 }
 
 void loop() {
-  // Do nothing in this task
+
 }
